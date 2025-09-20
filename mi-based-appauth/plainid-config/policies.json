@@ -1,0 +1,215 @@
+{
+  "policies": [
+    {
+      "id": "plan-read-policy",
+      "name": "Plan Read Access",
+      "description": "Allow reading plans for authorized users",
+      "version": "1.0",
+      "rule": {
+        "condition": "AND",
+        "rules": [
+          {
+            "attribute": "user.department",
+            "operator": "IN",
+            "value": ["planning", "management", "finance", "executive"]
+          },
+          {
+            "attribute": "resource.type",
+            "operator": "EQUALS",
+            "value": "plans"
+          },
+          {
+            "attribute": "action",
+            "operator": "EQUALS",
+            "value": "read"
+          }
+        ]
+      },
+      "effect": "PERMIT"
+    },
+    {
+      "id": "plan-admin-policy",
+      "name": "Plan Administration Access",
+      "description": "Allow full plan management for plan administrators",
+      "version": "1.0",
+      "rule": {
+        "condition": "AND",
+        "rules": [
+          {
+            "attribute": "user.role",
+            "operator": "IN",
+            "value": ["plan_administrator", "super_admin"]
+          },
+          {
+            "attribute": "resource.type",
+            "operator": "EQUALS",
+            "value": "plans"
+          },
+          {
+            "attribute": "action",
+            "operator": "IN",
+            "value": ["create", "update", "delete"]
+          }
+        ]
+      },
+      "effect": "PERMIT"
+    },
+    {
+      "id": "account-read-policy",
+      "name": "Account Read Access",
+      "description": "Allow reading accounts based on user assignments",
+      "version": "1.0", 
+      "rule": {
+        "condition": "AND",
+        "rules": [
+          {
+            "attribute": "resource.type",
+            "operator": "EQUALS",
+            "value": "accounts"
+          },
+          {
+            "attribute": "action",
+            "operator": "EQUALS",
+            "value": "read"
+          },
+          {
+            "condition": "OR",
+            "rules": [
+              {
+                "attribute": "user.role",
+                "operator": "IN",
+                "value": ["account_admin", "super_admin"]
+              },
+              {
+                "condition": "AND",
+                "rules": [
+                  {
+                    "attribute": "user.role",
+                    "operator": "EQUALS",
+                    "value": "account_viewer"
+                  },
+                  {
+                    "attribute": "context.account_id",
+                    "operator": "IN",
+                    "value": "user.assigned_accounts"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effect": "PERMIT"
+    },
+    {
+      "id": "account-update-policy",
+      "name": "Account Update Access",
+      "description": "Allow updating accounts with proper authorization",
+      "version": "1.0",
+      "rule": {
+        "condition": "AND",
+        "rules": [
+          {
+            "attribute": "resource.type",
+            "operator": "EQUALS",
+            "value": "accounts"
+          },
+          {
+            "attribute": "action",
+            "operator": "EQUALS",
+            "value": "update"
+          },
+          {
+            "condition": "OR",
+            "rules": [
+              {
+                "attribute": "user.role",
+                "operator": "EQUALS",
+                "value": "super_admin"
+              },
+              {
+                "condition": "AND",
+                "rules": [
+                  {
+                    "attribute": "user.role",
+                    "operator": "EQUALS",
+                    "value": "account_admin"
+                  },
+                  {
+                    "attribute": "context.account_id",
+                    "operator": "IN",
+                    "value": "user.assigned_accounts"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effect": "PERMIT"
+    },
+    {
+      "id": "time-based-access-policy",
+      "name": "Business Hours Access",
+      "description": "Restrict sensitive operations to business hours",
+      "version": "1.0",
+      "rule": {
+        "condition": "AND",
+        "rules": [
+          {
+            "attribute": "action",
+            "operator": "IN",
+            "value": ["delete", "create"]
+          },
+          {
+            "attribute": "context.time_of_day",
+            "operator": "BETWEEN",
+            "value": ["08:00", "18:00"]
+          },
+          {
+            "attribute": "context.day_of_week",
+            "operator": "IN",
+            "value": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+          }
+        ]
+      },
+      "effect": "PERMIT"
+    },
+    {
+      "id": "location-based-policy",
+      "name": "Location-Based Access",
+      "description": "Restrict access based on user location and client IP",
+      "version": "1.0",
+      "rule": {
+        "condition": "AND",
+        "rules": [
+          {
+            "attribute": "user.clearance_level",
+            "operator": "IN",
+            "value": ["confidential", "secret", "top_secret"]
+          },
+          {
+            "condition": "OR",
+            "rules": [
+              {
+                "attribute": "context.client_ip",
+                "operator": "IN_NETWORK",
+                "value": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+              },
+              {
+                "attribute": "user.location",
+                "operator": "IN",
+                "value": ["us-east", "us-west", "eu-west"]
+              }
+            ]
+          }
+        ]
+      },
+      "effect": "PERMIT"
+    }
+  ],
+  "default_policy": {
+    "effect": "DENY",
+    "description": "Default deny policy - all access must be explicitly permitted"
+  }
+}
