@@ -1,0 +1,15 @@
+azure-identity==1.17.1
+flask==3.0.3
+PyJWT==2.8.0
+cryptography==42.0.5
+requests==2.32.2
+aiohttp==3.9.5
+
+# For Kubernetes health checks and metrics
+prometheus-client==0.20.0
+
+# For improved logging
+structlog==24.1.0
+
+# For configuration management
+python-dotenv==1.0.1

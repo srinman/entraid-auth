@@ -1,0 +1,143 @@
+{
+  "user_attributes": [
+    {
+      "managed_identity_id": "12345678-1234-1234-1234-123456789012",
+      "user_id": "client-app-mi",
+      "department": "planning",
+      "role": "plan_administrator",
+      "assigned_accounts": [1, 2, 3, 5, 8],
+      "clearance_level": "confidential",
+      "location": "us-east",
+      "cost_center": "CC-1001",
+      "manager": "jane.doe@company.com",
+      "hire_date": "2023-01-15",
+      "active": true
+    },
+    {
+      "managed_identity_id": "87654321-4321-4321-4321-210987654321",
+      "user_id": "viewer-app-mi",
+      "department": "finance",
+      "role": "account_viewer",
+      "assigned_accounts": [1, 2],
+      "clearance_level": "internal",
+      "location": "us-west",
+      "cost_center": "CC-2001",
+      "manager": "john.smith@company.com",
+      "hire_date": "2023-06-01",
+      "active": true
+    },
+    {
+      "managed_identity_id": "11111111-2222-3333-4444-555555555555",
+      "user_id": "admin-app-mi",
+      "department": "management",
+      "role": "super_admin",
+      "assigned_accounts": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "clearance_level": "secret",
+      "location": "us-east",
+      "cost_center": "CC-0001",
+      "manager": "ceo@company.com",
+      "hire_date": "2022-01-01",
+      "active": true
+    },
+    {
+      "managed_identity_id": "99999999-8888-7777-6666-555555555555",
+      "user_id": "analyst-app-mi",
+      "department": "finance",
+      "role": "account_admin",
+      "assigned_accounts": [7, 8, 9],
+      "clearance_level": "confidential",
+      "location": "eu-west",
+      "cost_center": "CC-3001",
+      "manager": "eu.manager@company.com",
+      "hire_date": "2023-03-20",
+      "active": true
+    }
+  ],
+  "attribute_definitions": {
+    "managed_identity_id": {
+      "type": "string",
+      "description": "Azure Managed Identity Object ID",
+      "required": true,
+      "unique": true
+    },
+    "user_id": {
+      "type": "string", 
+      "description": "Human-readable user identifier",
+      "required": true
+    },
+    "department": {
+      "type": "string",
+      "description": "User's organizational department",
+      "allowed_values": ["planning", "finance", "management", "hr", "it", "operations"]
+    },
+    "role": {
+      "type": "string",
+      "description": "User's functional role",
+      "allowed_values": ["plan_administrator", "account_viewer", "account_admin", "super_admin", "read_only"]
+    },
+    "assigned_accounts": {
+      "type": "array",
+      "description": "List of account IDs the user can access",
+      "item_type": "integer"
+    },
+    "clearance_level": {
+      "type": "string",
+      "description": "Security clearance level",
+      "allowed_values": ["public", "internal", "confidential", "secret", "top_secret"],
+      "hierarchy": ["public", "internal", "confidential", "secret", "top_secret"]
+    },
+    "location": {
+      "type": "string",
+      "description": "User's primary work location",
+      "allowed_values": ["us-east", "us-west", "us-central", "eu-west", "eu-north", "asia-pacific"]
+    },
+    "cost_center": {
+      "type": "string",
+      "description": "User's cost center for accounting",
+      "pattern": "^CC-\\d{4}$"
+    },
+    "manager": {
+      "type": "string",
+      "description": "User's direct manager email",
+      "format": "email"
+    },
+    "hire_date": {
+      "type": "date",
+      "description": "User's hire date",
+      "format": "YYYY-MM-DD"
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether the user account is active",
+      "default": true
+    }
+  },
+  "context_attributes": {
+    "account_id": {
+      "type": "integer",
+      "description": "The account ID being accessed"
+    },
+    "client_ip": {
+      "type": "string",
+      "description": "Client IP address making the request"
+    },
+    "time_of_day": {
+      "type": "string",
+      "description": "Time of request in HH:MM format"
+    },
+    "day_of_week": {
+      "type": "string",
+      "description": "Day of the week",
+      "allowed_values": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    },
+    "request_path": {
+      "type": "string",
+      "description": "API endpoint path being accessed"
+    },
+    "request_method": {
+      "type": "string",
+      "description": "HTTP method used",
+      "allowed_values": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    }
+  }
+}
