@@ -45,6 +45,195 @@ Client App (AKS) → Workload Identity → Managed Identity → API App (AKS)
                                                   PlainID (Fine-grained Authorization)
 ```
 
+## App Registration Roles Architecture
+
+### Role Definition and Assignment Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           ENTRA ID TENANT                                      │
+│                                                                                 │
+│  ┌─────────────────────────┐                    ┌─────────────────────────────┐ │
+│  │    API APP REGISTRATION │                    │  CLIENT APP REGISTRATION    │ │
+│  │                         │                    │                             │ │
+│  │  App Roles Defined:     │                    │  No roles defined here      │ │
+│  │  ┌─────────────────────┐ │                    │  (only consumes roles)      │ │
+│  │  │ planadmin          │ │                    │                             │ │
+│  │  │ - id: guid-1       │ │                    │  ┌─────────────────────────┐ │ │
+│  │  │ - value: planadmin │ │                    │  │ Service Principal       │ │ │
+│  │  │ - displayName: ... │ │                    │  │ (for role assignments) │ │ │
+│  │  └─────────────────────┘ │                    │  └─────────────────────────┘ │ │
+│  │  ┌─────────────────────┐ │                    │                             │ │
+│  │  │ accountviewer      │ │                    └─────────────────────────────┘ │
+│  │  │ - id: guid-2       │ │                                                    │
+│  │  │ - value: accountvw │ │                                                    │
+│  │  └─────────────────────┘ │                                                    │
+│  │  ┌─────────────────────┐ │                                                    │
+│  │  │ accountadmin       │ │                                                    │
+│  │  │ - id: guid-3       │ │                                                    │
+│  │  │ - value: accountadm│ │                                                    │
+│  │  └─────────────────────┘ │                                                    │
+│  │                         │                                                    │
+│  │  ┌─────────────────────┐ │                                                    │
+│  │  │ Service Principal   │ │                                                    │
+│  │  │ (resource owner)    │ │                                                    │
+│  │  └─────────────────────┘ │                                                    │
+│  └─────────────────────────┘                                                    │
+│                                                                                 │
+│                            ROLE ASSIGNMENTS                                     │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                     App Role Assignments                                   │ │
+│  │                                                                             │ │
+│  │  Assignment 1:                                                              │ │
+│  │  ├─ app-role-id: guid-1 (planadmin)                                        │ │
+│  │  ├─ principal-id: client-service-principal-id                              │ │
+│  │  └─ resource-id: api-service-principal-id                                  │ │
+│  │                                                                             │ │
+│  │  Assignment 2:                                                              │ │
+│  │  ├─ app-role-id: guid-2 (accountviewer)                                    │ │
+│  │  ├─ principal-id: another-client-sp-id                                     │ │
+│  │  └─ resource-id: api-service-principal-id                                  │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                                    ↓ TOKEN FLOW ↓
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              RUNTIME FLOW                                      │
+│                                                                                 │
+│  ┌─────────────────┐   1. Request Token    ┌─────────────────────────────────┐  │
+│  │  CLIENT APP     │  ──────────────────→   │        ENTRA ID                │  │
+│  │  (AKS Pod)      │                        │                                │  │
+│  │                 │   2. JWT Token         │  Token contains:               │  │
+│  │  Using:         │  ←──────────────────   │  {                             │  │
+│  │  - Client ID    │                        │    "roles": ["planadmin"],    │  │
+│  │  - Workload     │                        │    "aud": "api://api-app-id", │  │
+│  │    Identity     │                        │    "sub": "client-sp-id",     │  │
+│  └─────────────────┘                        │    ...                         │  │
+│           │                                 │  }                             │  │
+│           │                                 └─────────────────────────────────┘  │
+│           │ 3. API Call with Token                                              │
+│           ↓                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          API APP (AKS Pod)                                 │ │
+│  │                                                                             │ │
+│  │  4. Token Validation:                                                       │ │
+│  │     ├─ Verify signature                                                     │ │
+│  │     ├─ Check audience (api://api-app-id)                                   │ │
+│  │     ├─ Validate issuer                                                      │ │
+│  │     └─ Extract roles: ["planadmin"]                                        │ │
+│  │                                                                             │ │
+│  │  5. Authorization Check:                                                    │ │
+│  │     ├─ Endpoint requires "planadmin" role                                  │ │
+│  │     ├─ Token contains "planadmin" role                                     │ │
+│  │     └─ Access GRANTED                                                      │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Points:
+
+1. **Roles Defined in API App**: All roles (planadmin, accountviewer, accountadmin) are defined in the API app registration manifest
+
+2. **Service Principals for Assignment**: Both API and Client apps have service principals created for role assignment operations
+
+3. **Role Assignment Process**: 
+   - Use API app's role ID (GUID)
+   - Assign to Client app's service principal ID  
+   - Target API app's service principal as resource
+
+4. **Token Claims**: When client requests token, Entra ID includes assigned roles in the JWT token's "roles" claim
+
+5. **API Validation**: API validates token and checks if required roles are present in the "roles" claim
+
+### Phase 2 Architecture: Managed Identity + PlainID
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           ENTRA ID TENANT                                      │
+│                                                                                 │
+│  ┌─────────────────────────┐                    ┌─────────────────────────────┐ │
+│  │   MANAGED IDENTITY      │                    │   MANAGED IDENTITY          │ │
+│  │   (API App)             │                    │   (Client App)              │ │
+│  │                         │                    │                             │ │
+│  │  ┌─────────────────────┐ │                    │  ┌─────────────────────────┐ │ │
+│  │  │ Object ID           │ │                    │  │ Object ID               │ │ │
+│  │  │ Client ID           │ │                    │  │ Client ID               │ │ │
+│  │  │ Principal ID        │ │                    │  │ Principal ID            │ │ │
+│  │  └─────────────────────┘ │                    │  └─────────────────────────┘ │ │
+│  │                         │                    │                             │ │
+│  │  NO ROLES DEFINED       │                    │  NO ROLES DEFINED           │ │
+│  │  (Authorization         │                    │  (Uses MI token only)       │ │
+│  │   handled externally)   │                    │                             │ │
+│  └─────────────────────────┘                    └─────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                                    ↓ TOKEN FLOW ↓
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              RUNTIME FLOW                                      │
+│                                                                                 │
+│  ┌─────────────────┐   1. Request Token    ┌─────────────────────────────────┐  │
+│  │  CLIENT APP     │  ──────────────────→   │        ENTRA ID                │  │
+│  │  (AKS Pod)      │                        │                                │  │
+│  │                 │   2. MI Token          │  Token contains:               │  │
+│  │  Using:         │  ←──────────────────   │  {                             │  │
+│  │  - Managed      │                        │    "oid": "mi-object-id",     │  │
+│  │    Identity     │                        │    "aud": "management.azure", │  │
+│  │  - Workload     │                        │    "idtyp": "MI",             │  │
+│  │    Identity     │                        │    ...                         │  │
+│  └─────────────────┘                        │  }                             │  │
+│           │                                 │  NO ROLES CLAIM                │  │
+│           │                                 └─────────────────────────────────┘  │
+│           │ 3. API Call with MI Token                                           │
+│           ↓                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          API APP (AKS Pod)                                 │ │
+│  │                                                                             │ │
+│  │  4. Token Validation:                                                       │ │
+│  │     ├─ Verify signature                                                     │ │
+│  │     ├─ Check audience (management.azure.com)                               │ │
+│  │     ├─ Validate issuer                                                      │ │
+│  │     ├─ Verify idtyp = "MI"                                                  │ │
+│  │     └─ Extract user_id: managed-identity-object-id                         │ │
+│  │                                                                             │ │
+│  │  5. PlainID Authorization:                ┌───────────────────────────────┐ │ │
+│  │     ├─ user_id: mi-object-id             │         PLAINID               │ │ │
+│  │     ├─ resource: "plans"          ────────→                               │ │ │
+│  │     ├─ action: "create"                  │  User Attributes:             │ │ │
+│  │     ├─ context: {account_id, time, etc}  │  {                            │ │ │
+│  │     │                                    │    "mi_id": "...",            │ │ │
+│  │     └─ Decision: PERMIT/DENY ←───────────│    "department": "planning",  │ │ │
+│  │                                          │    "role": "plan_admin",      │ │ │
+│  │                                          │    "accounts": [1,2,3]        │ │ │
+│  │                                          │  }                            │ │ │
+│  │                                          │                               │ │ │
+│  │                                          │  Policies:                    │ │ │
+│  │                                          │  - Time-based rules           │ │ │
+│  │                                          │  - Resource-specific access   │ │ │
+│  │                                          │  - Context-aware decisions    │ │ │
+│  │                                          └───────────────────────────────┘ │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Architecture Comparison Summary
+
+| Aspect | App Registration (Phase 1) | Managed Identity + PlainID (Phase 2) |
+|--------|----------------------------|--------------------------------------|
+| **Role Definition** | In API app registration | In PlainID policies |
+| **Role Assignment** | Entra ID app-role-assignment | PlainID user attributes |
+| **Token Content** | Contains "roles" claim | Contains managed identity info |
+| **Authorization** | Simple role membership check | Fine-grained policy evaluation |
+| **Context Awareness** | No | Yes (time, location, resource-specific) |
+| **Security Team Dependency** | High (role changes require approval) | Low (policy changes via PlainID) |
+| **Granularity** | Coarse (application-level roles) | Fine (resource + action + context) |
+| **Audit Trail** | Basic (role assignments) | Detailed (policy decisions + context) |
+| **Scalability** | Limited by Entra ID role model | Flexible policy-based model |
+
 ## Token Scopes and Authentication Differences
 
 ### Understanding Token Scopes
