@@ -149,6 +149,27 @@ Client App (AKS) → Workload Identity → Managed Identity → API App (AKS)
 
 5. **API Validation**: API validates token and checks if required roles are present in the "roles" claim
 
+### Microsoft Documentation References for App Role Definition
+
+The following official Microsoft documentation confirms that app roles are defined in the API/resource application registration:
+
+1. **App Roles Definition Location**
+   - **URL**: https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps#declare-roles-for-an-application
+   - **Key Quote**: *"App roles are defined on an application registration representing a service, app, or API."*
+
+2. **App-Calling-API Scenario**
+   - **URL**: https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps#usage-scenario-of-app-roles
+   - **Key Quote**: *"If you're implementing app role business logic in an app-calling-API scenario, you have two app registrations. One app registration is for the app, and a second app registration is for the API. In this case, define the app roles and assign them to the user or group in the app registration of the API."*
+
+3. **Protected Web API Verification**
+   - **URL**: https://learn.microsoft.com/en-us/entra/identity-platform/scenario-protected-web-api-verification-scope-app-roles
+   - **Reference**: Documentation shows API applications validating roles that were defined in their own app registration
+
+These references validate the architecture shown above where:
+- **API app registration** defines the roles (planadmin, accountviewer, accountadmin)
+- **Client app registration** consumes these roles through assignments
+- **Role assignments** link client service principals to API-defined roles
+
 ### Phase 2 Architecture: Managed Identity + PlainID
 
 ```
@@ -294,7 +315,7 @@ payload = jwt.decode(
 
 1. **Managed Identities Overview**
    - **URL**: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview
-   - **Key Point**: *"You can use managed identities to authenticate to any resource that supports Microsoft Entra authentication, including your own applications."*
+   - **Key Quote**: *"You can use managed identities to authenticate to any resource that supports Microsoft Entra authentication, including your own applications."*
 
 2. **Azure Services Supporting Managed Identities**
    - **URL**: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/managed-identities-status
@@ -313,7 +334,7 @@ payload = jwt.decode(
 
 5. **Azure Resource Manager Authentication**
    - **URL**: https://learn.microsoft.com/en-us/rest/api/azure/#authentication
-   - **Key Info**: Explains that `https://management.azure.com/` is the standard audience for Azure Resource Manager authentication
+   - **Key Quote**: *"Azure Resource Manager provider (and classic deployment model) APIs use `https://management.core.windows.net/`"* and *"Azure Resource Manager provider APIs use `https://management.azure.com/`"*
 
 ### Alternative Azure Scopes for Managed Identity
 
@@ -1106,3 +1127,202 @@ Based on Microsoft documentation and PlainID capabilities:
 ✅ **External authorization systems like PlainID eliminate need for app registration roles**  
 
 This approach aligns with Microsoft's recommendation for service-to-service authentication within Azure and modern zero-trust authorization patterns.
+
+## Appendix: Microsoft App Role Patterns
+
+This appendix provides detailed architecture diagrams for the two primary app role patterns documented by Microsoft, illustrating where roles are defined and how they flow through tokens.
+
+### Pattern 1: User Sign-In Application Scenario
+
+**Microsoft Documentation Quote**: *"If you're implementing app role business logic that signs in the users in your application scenario, first define the app roles in App registrations. Then, an admin assigns them to users and groups in the Enterprise applications pane. Depending on the scenario, these assigned app roles are included in different tokens that are issued for your application. For example, for an app that signs in users, the roles claims are included in the ID token. When your application calls an API, the roles claims are included in the access token."*
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                     PATTERN 1: USER SIGN-IN SCENARIO                           │
+│                                                                                 │
+│  ┌─────────────────────────┐                    ┌─────────────────────────────┐ │
+│  │   APPLICATION REGISTRATION │                    │   EXTERNAL API REGISTRATION │ │
+│  │                         │                    │                             │ │
+│  │  App Roles Defined:     │                    │  May have its own roles     │ │
+│  │  ┌─────────────────────┐ │                    │  (separate from app roles)  │ │
+│  │  │ manager            │ │                    │                             │ │
+│  │  │ employee           │ │                    │  ┌─────────────────────────┐ │ │
+│  │  │ admin              │ │                    │  │ read, write, delete     │ │ │
+│  │  └─────────────────────┘ │                    │  └─────────────────────────┘ │ │
+│  │                         │                    │                             │ │
+│  │  ┌─────────────────────┐ │                    └─────────────────────────────┘ │
+│  │  │ Service Principal   │ │                                                  │
+│  │  │                     │ │                                                  │
+│  │  └─────────────────────┘ │                                                  │
+│  └─────────────────────────┘                                                  │
+│                                                                                 │
+│                     USER & GROUP ASSIGNMENTS                                   │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                  Enterprise Applications                                   │ │
+│  │                                                                             │ │
+│  │  User Assignment 1:                                                        │ │
+│  │  ├─ user: john@company.com                                                 │ │
+│  │  └─ role: manager                                                          │ │
+│  │                                                                             │ │
+│  │  User Assignment 2:                                                        │ │
+│  │  ├─ user: jane@company.com                                                 │ │
+│  │  └─ role: employee                                                         │ │
+│  │                                                                             │ │
+│  │  Group Assignment:                                                          │ │
+│  │  ├─ group: IT-Admins                                                       │ │
+│  │  └─ role: admin                                                            │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                                    ↓ TOKEN FLOW ↓
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              RUNTIME FLOW                                      │
+│                                                                                 │
+│  ┌─────────────────┐   1. User Sign-In     ┌─────────────────────────────────┐  │
+│  │      USER       │  ──────────────────→   │        ENTRA ID                │  │
+│  │  john@company   │                        │                                │  │
+│  │     .com        │   2. ID Token          │  ID Token contains:            │  │
+│  │                 │  ←──────────────────   │  {                             │  │
+│  └─────────────────┘                        │    "roles": ["manager"],      │  │
+│           │                                 │    "aud": "app-client-id",    │  │
+│           │                                 │    "sub": "user-object-id",   │  │
+│           │                                 │    ...                         │  │
+│           │                                 │  }                             │  │
+│           │                                 └─────────────────────────────────┘  │
+│           │ 3. Access Application                                               │
+│           ↓                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                       APPLICATION                                          │ │
+│  │                                                                             │ │
+│  │  4. ID Token Validation:                                                    │ │
+│  │     ├─ Verify signature                                                     │ │
+│  │     ├─ Check audience (app-client-id)                                      │ │
+│  │     ├─ Validate issuer                                                      │ │
+│  │     └─ Extract roles: ["manager"]                                          │ │
+│  │                                                                             │ │
+│  │  5. When calling External API:                                             │ │
+│  │     ├─ Request access token for API                                        │ │
+│  │     ├─ Access token includes user roles                                    │ │
+│  │     └─ Pass token to API                                                   │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Pattern 2: App-Calling-API Scenario
+
+**Microsoft Documentation Quote**: *"If you're implementing app role business logic in an app-calling-API scenario, you have two app registrations. One app registration is for the app, and a second app registration is for the API. In this case, define the app roles and assign them to the user or group in the app registration of the API. When the user authenticates with the app and requests an access token to call the API, a roles claim is included in the token."*
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    PATTERN 2: APP-CALLING-API SCENARIO                         │
+│                                                                                 │
+│  ┌─────────────────────────┐                    ┌─────────────────────────────┐ │
+│  │   CLIENT APP REGISTRATION │                    │    API APP REGISTRATION     │ │
+│  │                         │                    │                             │ │
+│  │  NO ROLES DEFINED       │                    │  App Roles Defined:         │ │
+│  │  (Consumes API roles)   │                    │  ┌─────────────────────────┐ │ │
+│  │                         │                    │  │ data.read              │ │ │
+│  │  ┌─────────────────────┐ │                    │  │ data.write             │ │ │
+│  │  │ Service Principal   │ │                    │  │ data.delete            │ │ │
+│  │  │ (for role assign.)  │ │                    │  │ admin.manage           │ │ │
+│  │  └─────────────────────┘ │                    │  └─────────────────────────┘ │ │
+│  │                         │                    │                             │ │
+│  └─────────────────────────┘                    │  ┌─────────────────────────┐ │ │
+│                                                 │  │ Service Principal       │ │ │
+│                                                 │  │ (resource owner)        │ │ │
+│                                                 │  └─────────────────────────┘ │ │
+│                                                 └─────────────────────────────┘ │
+│                                                                                 │
+│                            ROLE ASSIGNMENTS                                     │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                Enterprise Applications - API App                           │ │
+│  │                                                                             │ │
+│  │  User Assignment 1:                                                        │ │
+│  │  ├─ user: john@company.com                                                 │ │
+│  │  └─ role: data.read                                                        │ │
+│  │                                                                             │ │
+│  │  User Assignment 2:                                                        │ │
+│  │  ├─ user: jane@company.com                                                 │ │
+│  │  └─ role: data.write                                                       │ │
+│  │                                                                             │ │
+│  │  App Assignment:                                                            │ │
+│  │  ├─ app: client-app-service-principal                                      │ │
+│  │  └─ role: data.read                                                        │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+                                    ↓ TOKEN FLOW ↓
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              RUNTIME FLOW                                      │
+│                                                                                 │
+│  ┌─────────────────┐   1. User Auth with    ┌─────────────────────────────────┐  │
+│  │      USER       │      Client App         │        ENTRA ID                │  │
+│  │  john@company   │  ──────────────────→    │                                │  │
+│  │     .com        │                         │                                │  │
+│  │                 │   2. Request Access     │                                │  │
+│  │                 │      Token for API      │  Access Token contains:        │  │
+│  │                 │  ──────────────────→    │  {                             │  │
+│  │                 │                         │    "roles": ["data.read"],    │  │
+│  │                 │   3. Access Token       │    "aud": "api://api-app-id", │  │
+│  │                 │  ←──────────────────    │    "sub": "user-object-id",   │  │
+│  └─────────────────┘                         │    ...                         │  │
+│           │                                  │  }                             │  │
+│           │                                  └─────────────────────────────────┘  │
+│           │ 4. Use Client App to call API                                       │
+│           ↓                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                       CLIENT APP                                           │ │
+│  │                                                                             │ │
+│  │  5. Call API with Access Token:                                            │ │
+│  │     ├─ Include token in Authorization header                               │ │
+│  │     ├─ Token contains user's API roles                                     │ │
+│  │     └─ Send request to API                                                 │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│           │ 6. API Call with Token                                              │
+│           ↓                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          API APP                                           │ │
+│  │                                                                             │ │
+│  │  7. Token Validation:                                                       │ │
+│  │     ├─ Verify signature                                                     │ │
+│  │     ├─ Check audience (api://api-app-id)                                   │ │
+│  │     ├─ Validate issuer                                                      │ │
+│  │     └─ Extract roles: ["data.read"]                                        │ │
+│  │                                                                             │ │
+│  │  8. Authorization Check:                                                    │ │
+│  │     ├─ Endpoint requires "data.read" role                                  │ │
+│  │     ├─ Token contains "data.read" role                                     │ │
+│  │     └─ Access GRANTED                                                      │ │
+│  │                                                                             │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Differences Between Patterns
+
+| Aspect | Pattern 1: User Sign-In | Pattern 2: App-Calling-API |
+|--------|------------------------|----------------------------|
+| **Role Definition** | In the application registration | In the API registration |
+| **User Assignment** | Users assigned to app roles | Users assigned to API roles |
+| **Token Type** | ID Token (sign-in) + Access Token (API calls) | Access Token for API |
+| **Role Location** | Both ID and Access tokens | Access token only |
+| **Audience** | App client ID (ID token) + API audience (Access token) | API audience |
+| **Authorization Point** | Application + API | API only |
+| **Use Case** | Web apps with integrated authorization | Client apps calling protected APIs |
+
+### Documentation References
+
+Both patterns are documented in Microsoft's official documentation:
+
+- **Pattern 1 & 2 Source**: https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps#usage-scenario-of-app-roles
+- **Protected API Verification**: https://learn.microsoft.com/en-us/entra/identity-platform/scenario-protected-web-api-verification-scope-app-roles
+
+The documentation in this guide primarily focuses on **Pattern 2** (App-Calling-API scenario) which is the most common pattern for microservices and API-based architectures in AKS environments.
