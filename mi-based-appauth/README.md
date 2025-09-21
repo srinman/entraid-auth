@@ -8,11 +8,12 @@ This document provides a comprehensive guide to eliminate app registration depen
 
 1. [Problem Statement](#problem-statement)
 2. [Architecture Comparison](#architecture-comparison)
-3. [Phase 1: App Registration with Workload Identity (Baseline)](#phase-1-app-registration-with-workload-identity-baseline)
-4. [Phase 2: Pure Managed Identity Approach](#phase-2-pure-managed-identity-approach)
-5. [PlainID Integration](#plainid-integration)
-6. [Migration Guide](#migration-guide)
-7. [Best Practices](#best-practices)
+3. [Token Scopes and Authentication Differences](#token-scopes-and-authentication-differences)
+4. [Phase 1: App Registration with Workload Identity (Baseline)](#phase-1-app-registration-with-workload-identity-baseline)
+5. [Phase 2: Pure Managed Identity Approach](#phase-2-pure-managed-identity-approach)
+6. [PlainID Integration](#plainid-integration)
+7. [Migration Guide](#migration-guide)
+8. [Best Practices](#best-practices)
 
 ## Problem Statement
 
@@ -43,6 +44,104 @@ Client App (AKS) → Workload Identity → Managed Identity → API App (AKS)
                                                         ↓
                                                   PlainID (Fine-grained Authorization)
 ```
+
+## Token Scopes and Authentication Differences
+
+### Understanding Token Scopes
+
+One of the key differences between app registration and managed identity approaches is how tokens are scoped and validated.
+
+#### App Registration Token Scopes (Phase 1)
+
+**Client Token Request:**
+```python
+# Client requests token for specific app registration
+token_scope = "api://12345678-1234-1234-1234-123456789012/.default"
+```
+
+**API Token Validation:**
+```python
+# API validates token against custom audience
+payload = jwt.decode(
+    token,
+    key,
+    algorithms=['RS256'],
+    audience=f"api://{self.client_id}",  # Custom app registration audience
+    issuer=f"https://sts.windows.net/{self.tenant_id}/"
+)
+```
+
+#### Managed Identity Token Scopes (Phase 2)
+
+**Client Token Request:**
+```python
+# Client requests token for standard Azure scope
+token_scope = "https://management.azure.com/.default"
+```
+
+**API Token Validation:**
+```python
+# API validates token against standard Azure audience
+payload = jwt.decode(
+    token,
+    key,
+    algorithms=['RS256'],
+    audience="https://management.azure.com/",  # Standard Azure audience
+    issuer=f"https://sts.windows.net/{self.tenant_id}/"
+)
+```
+
+### Why `https://management.azure.com/.default`?
+
+**Managed Identity Standards**: Unlike app registrations which have custom audiences (like `api://your-app-id`), managed identities use well-known Azure scopes. The management scope is the most universal for service-to-service authentication.
+
+**Key Benefits:**
+- **Standardized**: No need to configure custom audiences
+- **Universal**: Works across all Azure services
+- **Simplified**: Reduces configuration complexity
+- **Microsoft Recommended**: Follows Azure best practices
+
+### Official Azure Documentation References
+
+1. **Managed Identities Overview**
+   - **URL**: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview
+   - **Key Point**: *"You can use managed identities to authenticate to any resource that supports Microsoft Entra authentication, including your own applications."*
+
+2. **Azure Services Supporting Managed Identities**
+   - **URL**: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/managed-identities-status
+   - **Content**: Lists standard scopes used by managed identities for different Azure services
+
+3. **Token Acquisition with Managed Identities**
+   - **URL**: https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-use-vm-token
+   - **Examples**: Shows token requests using standard Azure scopes:
+     - `https://management.azure.com/` (Azure Resource Manager)
+     - `https://vault.azure.net/` (Key Vault)
+     - `https://storage.azure.com/` (Storage)
+
+4. **Azure Identity SDK Documentation**
+   - **URL**: https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.defaultazurecredential
+   - **Content**: Documents how `DefaultAzureCredential` works with standard Azure scopes
+
+5. **Azure Resource Manager Authentication**
+   - **URL**: https://learn.microsoft.com/en-us/rest/api/azure/#authentication
+   - **Key Info**: Explains that `https://management.azure.com/` is the standard audience for Azure Resource Manager authentication
+
+### Alternative Azure Scopes for Managed Identity
+
+While `https://management.azure.com/.default` is the most universal, managed identities can also request tokens for other Azure services:
+
+```python
+# Key Vault access
+vault_scope = "https://vault.azure.net/.default"
+
+# Storage access  
+storage_scope = "https://storage.azure.com/.default"
+
+# Graph API access
+graph_scope = "https://graph.microsoft.com/.default"
+```
+
+**Recommendation**: Use `https://management.azure.com/.default` for custom application authentication as it's the most generic and widely supported scope for managed identity service-to-service authentication.
 
 ## Phase 1: App Registration with Workload Identity (Baseline)
 
